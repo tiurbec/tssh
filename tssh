@@ -1,0 +1,346 @@
+#!/bin/bash
+
+
+function showHelp ()
+{
+#  echo "  $0 - utility for easy remote ssh operations"
+#  echo " "
+  echo "usage: $0 <command> <params>
+  Available commands:
+       [connect] - connects via SSH to a host
+                     params: <hostname>
+       <find>    - finds hosts in database (substr search)
+                     params: <hostname>
+       <key>     - SSH keys workout
+                     params: - [find] [keyname|keyid] look for keys in PSQL
+                             - <getpub> <keyid>       get public key from PSQL
+                             - <getpriv> <keyid>      get private key from PSQL
+                             - <putty> <keyid>        get putty key from PSQL
+                             - <list> <hostname>      list auth keys on host
+                             - <put> <host> <keyid>   add auth key on host
+       <put>     - scp a file to remote host
+                     params: <hostname> <local> <remote>
+                     note: local and remote can be both files or folders
+       <get>     - scp a file from remote host
+                     params: <hostname> <local> <remote>
+                     note: local and remote can be both files or folders
+       <help>    - show this help"
+  exit 255
+}
+
+function openShell ()
+{
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  SSHPARAMS=" -p $PORT $USER@$IP -i $IFILE "
+  if [ $SHOW_CONNECT_INFO -eq 1 ];
+  then
+    echo "Connecting to $USER@$IP:$PORT [$TSSH_HOST] using $IFILE"
+  fi
+  ssh -t -t $SSHPARAMS
+}
+
+function searchTextFile ()
+{
+  GOTO=${1:-localhost}
+  GOTO=${GOTO,,}
+  exec 3<$TEXTFILE
+  while read id hostname hostip hostport hostuser hostkey newname <&3; do
+#    fullkey=`printf "/root/.ssh/id_rsa_%02d" "$hostkey"`
+    fullkey="${KEYS_DIR}/${hostkey}"
+    if [ "${hostname,,}" == "$GOTO" ] || [ "${newname,,}" == "$GOTO" ];
+    then
+      TSSH_HOSTFOUND=1
+      TSSH_HOST="$hostname"
+      TSSH_IP="$hostip"
+      TSSH_PORT="$hostport"
+      TSSH_USER="$hostuser"
+      TSSH_KEY="$hostkey"
+      break
+    fi
+  done
+  exec 3>&-
+}
+
+function findTextFile ()
+{
+  GOTO=${1:-localhost}
+  GOTO=${GOTO,,}
+  cat $TEXTFILE | grep -i "$GOTO"
+}
+
+function searchPSQL ()
+{
+  GOTO=${6:-localhost}
+  GOTO=${GOTO,,}
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  REMOTE_PORT=${5:-"5432"}
+  LOCAL_PORT=$(randomPort)
+  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+  PSQL_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select idh,h_name,ssh_host,ssh_port,ssh_user,ssh_key from hosts where (h_name ilike '$GOTO') or (h_name ilike '$GOTO.%')limit 1;")
+  if [ -n "$PSQL_RES" ];
+  then
+    TSSH_HOSTFOUND=1
+    TSSH_HOST=$(echo "$PSQL_RES"|cut -d"|" -f2)
+    TSSH_IP=$(echo "$PSQL_RES"|cut -d"|" -f3)
+    TSSH_PORT=$(echo "$PSQL_RES"|cut -d"|" -f4)
+    TSSH_USER=$(echo "$PSQL_RES"|cut -d"|" -f5)
+    TSSH_KEY=$(echo "$PSQL_RES"|cut -d"|" -f6)
+  fi
+}
+
+function findPSQL ()
+{
+  GOTO=${6:-localhost}
+  GOTO=${GOTO,,}
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  REMOTE_PORT=${5:-"5432"}
+  LOCAL_PORT=$(randomPort)
+  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%');"
+}
+
+function extractPSQLkey ()
+{
+  GOTO=${6:-localhost}
+  GOTO=${GOTO,,}
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  REMOTE_PORT=${5:-"5432"}
+  LOCAL_PORT=$(randomPort)
+  KEYINDEX=${6:-"1"}
+  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+  psql -A -X -a -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$KEYINDEX';">$TEMP_DIR/$KEYINDEX
+  chmod og-rwx $TEMP_DIR/$KEYINDEX
+}
+
+function randomPort ()
+{
+   echo $[ 40960 + $[ RANDOM % 10240 ]]
+}
+
+function openTunnel ()
+{
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  REMOTE_PORT=${5:-"5432"}
+  LOCAL_PORT=${6:-"40960"}
+  ssh -t -t -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $IP "sleep 10" </dev/null 2>/dev/null &
+  sleep 1
+}
+
+function sshConnect ()
+{
+  DESTINATION=${1:-"localhost"}
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $TEMP_DIR/$TSSH_KEY
+      rm -f $TEMP_DIR/$TSSH_KEY
+    fi
+  fi
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
+    fi
+  fi
+  if [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    echo "$DESTINATION not found."
+  fi
+}
+function sshFind ()
+{
+  DESTINATION=${1:-"localhost"}
+  if [ $PGSQL_ENABLED -eq 1 ];
+  then
+    findPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+  fi
+  if [ $TEXTFILE_ENABLED -eq 1 ];
+  then
+    findTextFile $DESTINATION
+  fi
+}
+
+function keysList ()
+{
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idsk as id,sk_name as keyname from sshkeys order by keyname;"
+}
+
+function keysGetPub ()
+{
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pub_txt from sshkeys where idsk='$1';"
+}
+
+function keysGetPriv ()
+{
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$1';"
+}
+
+function keysGetPutty ()
+{
+  PRIV_TEMP=$(mktemp /tmp/tssh.XXXXXX)
+  PUTTY_TEMP=$(mktemp /tmp/tssh.XXXXXX)
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$1';" >$PRIV_TEMP
+  puttygen $PRIV_TEMP -o $PUTTY_TEMP
+  cat $PUTTY_TEMP
+  rm -f $PRIV_TEMP $PUTTY_TEMP
+}
+
+function keysFind ()
+{
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  if [[ $1 =~ '^[0-9]+$' ]];
+  then
+    psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idsk as id,sk_name as keyname from sshkeys where (idsk='$1') or (sk_name ilike '%$1%') order by keyname;"
+  else
+    psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idsk as id,sk_name as keyname from sshkeys where sk_name ilike '%$1%' order by keyname;"
+  fi
+}
+
+function keysListAuth ()
+{
+  DESTINATION=${1:-"localhost"}
+  AUTH_TEMP=$(mktemp /tmp/tsshauth.XXXXXX)
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      ssh -t -t $TSSH_USER@$TSSH_IP -p $TSSH_PORT -i $TEMP_DIR/$TSSH_KEY "cat $HOME/.ssh/authorized_keys" > $AUTH_TEMP 2>/dev/null
+      rm -f $TEMP_DIR/$TSSH_KEY
+    fi
+  fi
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      ssh -t -t $TSSH_USER@$TSSH_IP -p $TSSH_PORT -i $KEYS_DIR/$TSSH_KEY "cat $HOME/.ssh/authorized_keys" > $AUTH_TEMP 2>/dev/null
+    fi
+  fi
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  while IFS='' read -r line || [[ -n $line ]]; do
+    if  [[ $line =~ ^# ]];then break;fi
+    if [ ${#line} -lt 9 ];then break;fi
+      line=`echo "$line"|tr -d '\n'|tr -d '\r'`
+      ausig=$(echo $line | cut -f3 -d\  )
+      aukey=$(echo $line | cut -f2 -d\  )
+      ausis=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select idsk,sk_name from sshkeys where pub_txt ilike '%$line%';")
+      printf "%20s %s\n" "$ausis" "$ausig"
+  done < "$AUTH_TEMP"
+  rm -f $AUTH_TEMP
+}
+
+TSSH_HOST=""
+TSSH_IP=""
+TSSH_PORT=""
+TSSH_USER=""
+TSSH_KEY=""
+TSSH_HOSTFOUND=0
+
+. /root/git/tssh/tssh.conf
+
+if [ $# -eq 0 ];
+then
+  showHelp
+else
+  case "$1" in
+    connect)	if [ $# -gt 1 ];
+		then
+		  DESTINATION=$2
+		  sshConnect $DESTINATION
+		else
+		  echo "Need another parameter to connect to."
+		  exit 255
+		fi
+		;;
+    find)	if [ $# -gt 1 ];
+		then
+		  DESTINATION=$2
+		  sshFind $DESTINATION
+		else
+		  echo "Need another parameter to look for."
+		  exit 255
+		fi
+		;;
+    key)	if [ $# -gt 1 ];
+		then
+		  case "$2" in
+		    getpub)	if [ $# -gt 2 ]; then
+				  keysGetPub $3
+				else
+				  echo "Need another parameter to look for.";exit 255
+				fi
+				;;
+		    getpriv)	if [ $# -gt 2 ]; then
+				  keysGetPriv $3
+				else
+				  echo "Need another parameter to look for.";exit 255
+				fi
+				;;
+                    putty)      if [ $# -gt 2 ]; then
+                                  keysGetPutty $3
+                                else
+                                  echo "Need another parameter to look for.";exit 255
+                                fi
+                                ;;
+		    find)	if [ $# -gt 2 ]; then
+				  keysFind $3
+				else
+				  echo "Need another parameter to look for.";exit 255
+				fi
+				;;
+		    list)	if [ $# -gt 2 ]; then
+                                  keysListAuth $3
+                                else
+                                  echo "Need another parameter as hostname.";exit 255
+                                fi
+				;;
+		    *)		keysList
+				;;
+		  esac
+		else
+		  keysList
+		fi
+		;;
+    help)	showHelp
+		;;
+    *)		DESTINATION=$1
+		sshConnect $DESTINATION
+		if [ $TSSH_HOSTFOUND -eq 0 ];
+		then
+		  showHelp
+		fi
+		;;
+  esac
+fi
