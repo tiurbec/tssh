@@ -11,19 +11,21 @@ function showHelp ()
                      params: <hostname>
        <find>    - finds hosts in database (substr search)
                      params: <hostname>
+       <idh>	 - finds hosts in database looking for ID
+		     params: <hostid>
        <key>     - SSH keys workout
                      params: - [find] [keyname|keyid] look for keys in PSQL
                              - <getpub> <keyid>       get public key from PSQL
                              - <getpriv> <keyid>      get private key from PSQL
                              - <putty> <keyid>        get putty key from PSQL
                              - <list> <hostname>      list auth keys on host
-                             - <put> <host> <keyid>   add auth key on host
-       <put>     - scp a file to remote host
-                     params: <hostname> <local> <remote>
-                     note: local and remote can be both files or folders
-       <get>     - scp a file from remote host
-                     params: <hostname> <local> <remote>
-                     note: local and remote can be both files or folders
++                             - <put> <host> <keyid>   add auth key on host
++       <put>     - scp a file to remote host
++                     params: <hostname> <local> <remote>
++                     note: local and remote can be both files or folders
++       <get>     - scp a file from remote host
++                     params: <hostname> <local> <remote>
++                     note: local and remote can be both files or folders
        <help>    - show this help"
   exit 255
 }
@@ -71,6 +73,13 @@ function findTextFile ()
   cat $TEXTFILE | grep -i "$GOTO"
 }
 
+function findTextFileIdh ()
+{
+  GOTO=${1:-localhost}
+  GOTO=${GOTO,,}
+  cat $TEXTFILE | grep -i "^$GOTO"
+}
+
 function searchPSQL ()
 {
   GOTO=${6:-localhost}
@@ -106,6 +115,20 @@ function findPSQL ()
   LOCAL_PORT=$(randomPort)
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
   psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%');"
+}
+
+function findPSQLidh ()
+{
+  GOTO=${6:-localhost}
+  GOTO=${GOTO,,}
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  REMOTE_PORT=${5:-"5432"}
+  LOCAL_PORT=$(randomPort)
+  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (idh='$GOTO');"
 }
 
 function extractPSQLkey ()
@@ -177,6 +200,19 @@ function sshFind ()
   if [ $TEXTFILE_ENABLED -eq 1 ];
   then
     findTextFile $DESTINATION
+  fi
+}
+
+function sshFindIdh ()
+{
+  DESTINATION=${1:-"localhost"}
+  if [ $PGSQL_ENABLED -eq 1 ];
+  then
+    findPSQLidh $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+  fi
+  if [ $TEXTFILE_ENABLED -eq 1 ];
+  then
+    findTextFileIdh $DESTINATION
   fi
 }
 
@@ -293,6 +329,15 @@ else
 		  exit 255
 		fi
 		;;
+    idh)        if [ $# -gt 1 ];
+                then
+                  DESTINATION=$2
+                  sshFindIdh $DESTINATION
+                else
+                  echo "Need another parameter to look for."
+                  exit 255
+                fi
+                ;;
     key)	if [ $# -gt 1 ];
 		then
 		  case "$2" in
