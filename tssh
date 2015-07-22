@@ -41,7 +41,7 @@ function openShell ()
   then
     echo "Connecting to $USER@$IP:$PORT [$TSSH_HOST] using $IFILE"
   fi
-  ssh -t -t $SSHPARAMS
+  ssh -t -t -o "StrictHostKeyChecking no" $SSHPARAMS
 }
 
 function searchTextFile ()
@@ -160,7 +160,7 @@ function openTunnel ()
   IFILE=${4:-"/root/.ssh/id_rsa"}
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=${6:-"40960"}
-  ssh -t -t -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $IP "sleep 10" </dev/null 2>/dev/null &
+  ssh -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $IP "sleep 10" </dev/null 2>/dev/null &
   sleep 1
 }
 
