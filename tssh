@@ -114,7 +114,7 @@ function findPSQL ()
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=$(randomPort)
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
-  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%');"
+  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%') order by ip,port;"
 }
 
 function findPSQLidh ()
