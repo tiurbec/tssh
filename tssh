@@ -114,7 +114,7 @@ function findPSQL ()
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=$(randomPort)
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
-  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%') order by ip,port;"
+  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username,ssh_key as key from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%') order by ip,port;"
 }
 
 function findPSQLidh ()
@@ -160,13 +160,21 @@ function openTunnel ()
   IFILE=${4:-"/root/.ssh/id_rsa"}
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=${6:-"40960"}
-  ssh -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $IP "sleep 10" </dev/null 2>/dev/null &
+  ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $IP "sleep 10" </dev/null 2>/dev/null &
   sleep 1
 }
 
 function sshConnect ()
 {
   DESTINATION=${1:-"localhost"}
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
+    fi
+  fi
   if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
   then
     searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
@@ -177,14 +185,14 @@ function sshConnect ()
       rm -f $TEMP_DIR/$TSSH_KEY
     fi
   fi
-  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
-  then
-    searchTextFile $DESTINATION
-    if [ $TSSH_HOSTFOUND -eq 1 ];
-    then
-      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
-    fi
-  fi
+#  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+#  then
+#    searchTextFile $DESTINATION
+#    if [ $TSSH_HOSTFOUND -eq 1 ];
+#    then
+#      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
+#    fi
+#  fi
   if [ $TSSH_HOSTFOUND -eq 0 ];
   then
     echo "$DESTINATION not found."
