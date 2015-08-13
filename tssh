@@ -160,8 +160,8 @@ function openTunnel ()
   IFILE=${4:-"/root/.ssh/id_rsa"}
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=${6:-"40960"}
-  ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $IP "sleep 10" </dev/null 2>/dev/null &
-  sleep 1
+  ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP "sleep 10" </dev/null 2>/dev/null &
+  usleep 150000
 }
 
 function sshConnect ()
@@ -198,6 +198,44 @@ function sshConnect ()
     echo "$DESTINATION not found."
   fi
 }
+function nmapHost ()
+{
+  GOTO=${1:-localhost}
+  DESTINATION=${GOTO,,}
+  IP=$PSQL_SSH_HOST
+  PORT=$PSQL_SSH_PORT
+  USER=$PSQL_SSH_USER
+  IFILE=$PSQL_SSH_KEY
+  REMOTE_PORT=$PSQL_LOCAL_PORT
+  LOCAL_PORT=$(randomPort)
+  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+  PSQL_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| tr '\n' ','|sed s/,$//)
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      nmap -Pn -p "$PSQL_RES" $TSSH_IP
+#      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
+    fi
+  fi
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      nmap -Pn -p "$PSQL_RES" $TSSH_IP
+#      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+#      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $TEMP_DIR/$TSSH_KEY
+#      rm -f $TEMP_DIR/$TSSH_KEY
+    fi
+  fi
+  if [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    echo "$DESTINATION not found."
+  fi
+}
+
 function sshFind ()
 {
   DESTINATION=${1:-"localhost"}
@@ -336,6 +374,15 @@ else
 		  exit 255
 		fi
 		;;
+    nmap)	if [ $# -gt 1 ];
+		then
+		  DESTINATION=$2
+                  nmapHost $DESTINATION
+                else
+                  echo "Need another parameter to look for."
+                  exit 255
+                fi
+                ;;
     find)	if [ $# -gt 1 ];
 		then
 		  DESTINATION=$2
