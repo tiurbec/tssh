@@ -312,7 +312,15 @@ TSSH_USER=""
 TSSH_KEY=""
 TSSH_HOSTFOUND=0
 
-. /root/git/tssh/tssh.conf
+if [ -f /etc/tssh.conf ];
+then
+   source /etc/tssh.conf
+fi
+if [ -f $HOME/.tssh/tssh.conf ];
+then
+   source $HOME/.tssh/tssh.conf
+fi
+
 
 if [ $# -eq 0 ];
 then
