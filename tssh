@@ -11,6 +11,8 @@ function showHelp ()
                      params: <hostname>
        <find>    - finds hosts in database (substr search)
                      params: <hostname>
+       <nmap>    - nmaps host on ssh ports
+                     params: <hostname>
        <idh>	 - finds hosts in database looking for ID
 		     params: <hostid>
        <key>     - SSH keys workout
@@ -209,14 +211,14 @@ function nmapHost ()
   REMOTE_PORT=$PSQL_LOCAL_PORT
   LOCAL_PORT=$(randomPort)
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
-  PSQL_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| tr '\n' ','|sed s/,$//)
+  PORT_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| tr '\n' ','|sed s/,$//)
+  echo "===> $PORT_RES"
   if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
   then
     searchTextFile $DESTINATION
     if [ $TSSH_HOSTFOUND -eq 1 ];
     then
-      nmap -Pn -p "$PSQL_RES" $TSSH_IP
-#      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
+      nmap -Pn -p "$PORT_RES" $TSSH_IP
     fi
   fi
   if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
@@ -224,10 +226,7 @@ function nmapHost ()
     searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
     if [ $TSSH_HOSTFOUND -eq 1 ];
     then
-      nmap -Pn -p "$PSQL_RES" $TSSH_IP
-#      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
-#      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $TEMP_DIR/$TSSH_KEY
-#      rm -f $TEMP_DIR/$TSSH_KEY
+      nmap -Pn -p "$PORT_RES" $TSSH_IP
     fi
   fi
   if [ $TSSH_HOSTFOUND -eq 0 ];
