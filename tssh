@@ -116,7 +116,7 @@ function findPSQL ()
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=$(randomPort)
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
-  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username,ssh_key as key from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%') order by ip,port;"
+  psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username,ssh_psw as password,ssh_key as key from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%') order by ip,port;"
 }
 
 function findPSQLidh ()
@@ -294,6 +294,23 @@ function keysGetPutty ()
   rm -f $PRIV_TEMP $PUTTY_TEMP
 }
 
+function keysGetFull ()
+{
+  PRIV_TEMP=$(mktemp /tmp/tssh.XXXXXX)
+  PUTTY_TEMP=$(mktemp /tmp/tssh.XXXXXX)
+  LOCAL_PORT=$(randomPort)
+  openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
+  psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$1';" >$PRIV_TEMP
+  puttygen $PRIV_TEMP -o $PUTTY_TEMP
+  echo "######################################## PUBLIC KEY ########################################"
+  psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pub_txt from sshkeys where idsk='$1';"
+  echo "####################################### PRIVATE KEY ########################################"
+  psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$1';"
+  echo "######################################## PUTTY KEY #########################################"
+  cat $PUTTY_TEMP
+  rm -f $PRIV_TEMP $PUTTY_TEMP
+}
+
 function keysFind ()
 {
   LOCAL_PORT=$(randomPort)
@@ -417,6 +434,12 @@ else
 				;;
                     putty)      if [ $# -gt 2 ]; then
                                   keysGetPutty $3
+                                else
+                                  echo "Need another parameter to look for.";exit 255
+                                fi
+                                ;;
+                    full)      if [ $# -gt 2 ]; then
+                                  keysGetFull $3
                                 else
                                   echo "Need another parameter to look for.";exit 255
                                 fi
