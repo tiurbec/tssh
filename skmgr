@@ -1,5 +1,301 @@
 #!/bin/bash
 
+PSQL_HOST="144.76.176.172"
+PSQL_PORT="54323"
+PSQL_USER="postgres"
+PSQL_DB="infrastructure"
+
 function help()
 {
+  echo "usage: $0 <action> [params]
+  Available actions:
+       grant    - grants ssh access to host2 to host1, so host1 will be able to ssh to host2
+                     params: <host1> <host2>
+       revoke   - revokes ssh access to host2 to host1, so host1 will not be able anymore to ssh to host2
+                     params: <host1> <host2>
+       help     - show this help
+
+		  hosts will be referred as idh"
+  exit 255
 }
+
+function isInt()
+{
+  re='^[0-9]+$'
+  if ! [[ $1 =~ $re ]] ; then
+    return 1
+  else
+     return 0
+  fi
+}
+
+function isIPv4()
+{
+  local  ip=$1
+  local  stat=1
+
+  if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+    OIFS=$IFS
+    IFS='.'
+    ip=($ip)
+    IFS=$OIFS
+    [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+  fi
+  return $stat
+}
+
+function findHostByIdh()
+{
+  local idh=${1:-"0"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  local psql_result=$(psql -U $PSQL_USER -h $PSQL_HOST -p $PSQL_PORT $PSQL_DB -t -c "select idh,h_name,ssh_host,ssh_port,ssh_user,ssh_psw,ssh_key from hosts where idh='$idh';"|sed s/\ //g)
+  if [ -z $psql_result ]; then
+    return 1
+  fi
+  FH_IDH=$(echo $psql_result | cut -d\| -f 1)
+  FHNAME=$(echo $psql_result | cut -d\| -f 2)
+  FHHOST=$(echo $psql_result | cut -d\| -f 3)
+  FHPORT=$(echo $psql_result | cut -d\| -f 4)
+  FHUSER=$(echo $psql_result | cut -d\| -f 5)
+  FHPASS=$(echo $psql_result | cut -d\| -f 6)
+  FH_KEY=$(echo $psql_result | cut -d\| -f 7)
+  FHKEYF="$HOME/.ssh/id_rsa_$FH_KEY"
+  
+  return 0
+#  echo "[$FHNAME] $FHUSER:$FHPASS@$FHHOST:$FHPORT|$FH_KEY"
+}
+
+function execRemoteIdh()
+{
+  local idh=${1:-"0"}
+  local cmd=${2:-"ls"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  if findHostByIdh $idh; then
+    ssh -t -t -o StrictHostKeyChecking=no -p $FHPORT $FHUSER@$FHHOST -i $FHKEYF "$cmd" 2>/dev/null
+    return $?
+  else
+    return 0
+  fi
+}
+
+function hasKeyIdh()
+{
+  local idh=${1:-"0"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  execRemoteIdh $idh "ls -las \$HOME/.ssh/id_rsa >/dev/null 2>/dev/null"
+  return $?
+}
+
+function generateKeyIdh()
+{
+  local idh=${1:-"0"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  if hasKeyIdh $idh; then
+    return 0
+  else
+    execRemoteIdh $idh "mkdir \$HOME/.ssh 2>/dev/null;ssh-keygen -t rsa -N \"\" -f \$HOME/.ssh/id_rsa >/dev/null 2>/dev/null"
+    return $?
+  fi
+}
+
+function getPrivateKeyIdh()
+{
+  local idh=${1:-"0"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  if ! hasKeyIdh $idh; then
+    generateKeyIdh $idh
+  fi
+  if hasKeyIdh $idh; then
+    execRemoteIdh $idh "cat \$HOME/.ssh/id_rsa"
+    return $?
+  else
+    return 1
+  fi
+}
+function getPublicKeyIdh()
+{
+  local idh=${1:-"0"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  if ! hasKeyIdh $idh; then
+    generateKeyIdh $idh
+  fi
+  if hasKeyIdh $idh; then
+    execRemoteIdh $idh "cat \$HOME/.ssh/id_rsa.pub"
+    return $?
+  else
+    return 1
+  fi
+}
+function isAuthIdhPub()
+{
+  local idh=${1:-"0"}
+  local pub=${2:-"0"}
+  if [ "$idh" -eq "0" ]; then
+    return 1
+  fi
+  if [ "$pub" == "0" ]; then
+    return 1
+  fi
+#  echo "Lookin for $pub"
+#  echo $idh "cat \$HOME/.ssh/authorized_keys | grep \"$pub\" | wc -l"
+#  execRemoteIdh $idh "cat \$HOME/.ssh/authorized_keys | grep '$pub'| wc -l"
+  key=$(echo $pub | cut -f2 -d\ )
+#  echo $key
+#  ret=$(execRemoteIdh $idh "grep '$key' \$HOME/.ssh/authorized_keys |wc -l")
+  ret=$(execRemoteIdh $idh "cat \$HOME/.ssh/authorized_keys"|grep $key|wc -l)
+#  echo "|$ret|"
+  if [ "$ret" -eq "0" ]; then
+    return 1
+  else
+    return 0
+  fi
+  
+}
+function grantIdh()
+{
+  local idh1=${1:-"0"}
+  local idh2=${2:-"0"}
+  if [ "$idh1" -eq "0" ]; then
+    return 1
+  fi
+  if [ "$idh2" -eq "0" ]; then
+    return 1
+  fi
+  local key1=$(getPublicKeyIdh $idh1)
+  if isAuthIdhPub $idh2 "$key1"; then
+    return 0
+  else
+    execRemoteIdh $idh2 "echo \"\">> \$HOME/.ssh/authorized_keys"
+    execRemoteIdh $idh2 "echo \"$key1\" >> \$HOME/.ssh/authorized_keys"
+    return $?
+  fi
+}
+
+function revokeIdh()
+{
+  local idh1=${1:-"0"}
+  local idh2=${2:-"0"}
+  if [ "$idh1" -eq "0" ]; then
+    return 1
+  fi
+  if [ "$idh2" -eq "0" ]; then
+    return 1
+  fi
+  local key1=$(getPublicKeyIdh $idh1)
+  if isAuthIdhPub $idh2 "$key1"; then
+    if execRemoteIdh $idh2 "grep -v \"$key1\" \$HOME/.ssh/authorized_keys > \$HOME/.ssh/authorized_keys.old "; then
+      execRemoteIdh $idh2 "rm -f \$HOME/.ssh/authorized_keys ; mv \$HOME/.ssh/authorized_keys.old \$HOME/.ssh/authorized_keys;chmod 600 \$HOME/.ssh/authorized_keys"
+      return $?
+    else 
+      return 1
+    fi
+  else
+    return 0
+  fi
+}
+# test sql connection
+#psql -U $PSQL_USER -h $PSQL_HOST -p $PSQL_PORT $PSQL_DB -c '\l'
+
+# test int value
+#if isInt "1"; then
+#  echo "1 is int"
+#else
+#  echo "1 is not int"
+#fi
+
+# test ip
+#if isIPv4 "1a2.168.1.1"; then
+#  echo "is ip"
+#else
+#  echo "is not ip"
+#fi
+
+#test findHostByIdh
+#findHostByIdh 252
+
+#test execRemoteIdh
+#execRemoteIdh 267 "ls -las \$HOME/.ssh/"
+
+#hasKeyIdh 252
+#generateKeyIdh 267
+#RES=$(getPublicKeyIdh 267)
+#isAuthIdhPub 267 "$RES"
+#grantIdh 267 267
+#echo $? 
+
+if [ $# -eq 0 ];
+then
+  help
+else
+  case "$1" in
+    grant)    if [ $# -gt 2 ];
+                then
+                  host1=$2
+                  host2=$3
+                  #echo "GRANT: $host1 $host2"
+                  #findHostByIdh $host1
+                  #findHostByIdh $host2
+                  if ! isInt $host1;then
+                     echo "host1 must be int"
+                     exit 1
+                  fi
+                  if ! isInt $host2;then
+                     echo "host2 must be int"
+                     exit 2
+                  fi
+                  if grantIdh $host1 $host2;then
+                    echo "Granted access for $host1 to $host2."
+                    exit 0
+                  else
+                    echo "Could not grant access for $host1 to $host2."
+                    exit 1
+                  fi
+                else
+                  echo "Need another parameter to connect to."
+                  exit 255
+                fi
+                ;;
+    revoke)    if [ $# -gt 2 ];
+                then
+                  host1=$2
+                  host2=$3
+                  if ! isInt $host1;then
+                     echo "host1 must be int"
+                     exit 1
+                  fi
+                  if ! isInt $host2;then
+                     echo "host2 must be int"
+                     exit 2
+                  fi
+
+                  if revokeIdh $host1 $host2;then
+                    echo "Revoked access for $host1 to $host2."
+                    exit 0
+                  else
+                    echo "Could not revoke access for $host1 to $host2."
+                    exit 1
+                  fi
+                else
+                  echo "Need another parameter to connect to."
+                  exit 255
+                fi
+                ;;
+
+    *)          help
+                ;;
+  esac
+fi
+
