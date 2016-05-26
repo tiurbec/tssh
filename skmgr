@@ -4,7 +4,9 @@ PSQL_HOST="144.76.176.172"
 PSQL_PORT="54323"
 PSQL_USER="postgres"
 PSQL_DB="infrastructure"
-
+MY_IP=$(curl http://alpha.tiurbe.ro/ip.php 2>/dev/null)
+SK_PREFIX="$HOME/.ssh/id_rsa_"
+echo "PREFIX=$SK_PREFIX"
 function help()
 {
   echo "usage: $0 <action> [params]
@@ -51,7 +53,7 @@ function findHostByIdh()
   if [ "$idh" -eq "0" ]; then
     return 1
   fi
-  local psql_result=$(psql -U $PSQL_USER -h $PSQL_HOST -p $PSQL_PORT $PSQL_DB -t -c "select idh,h_name,ssh_host,ssh_port,ssh_user,ssh_psw,ssh_key from hosts where idh='$idh';"|sed s/\ //g)
+  local psql_result=$(psql -U $PSQL_USER -h $PSQL_HOST -p $PSQL_PORT $PSQL_DB -t -c "select idh,h_name,ssh_host,ssh_port,ssh_user,ssh_psw,ssh_key,h_ipint from hosts where idh='$idh';"|sed s/\ //g)
   if [ -z $psql_result ]; then
     return 1
   fi
@@ -62,7 +64,11 @@ function findHostByIdh()
   FHUSER=$(echo $psql_result | cut -d\| -f 5)
   FHPASS=$(echo $psql_result | cut -d\| -f 6)
   FH_KEY=$(echo $psql_result | cut -d\| -f 7)
-  FHKEYF="$HOME/.ssh/id_rsa_$FH_KEY"
+  if [ "$FHHOST" == "$MY_IP" ];then
+    FHHOST=$(echo $psql_result | cut -d\| -f 8)
+    FHPORT="22"
+  fi
+  FHKEYF="$SK_PREFIX$FH_KEY"
   
   return 0
 #  echo "[$FHNAME] $FHUSER:$FHPASS@$FHHOST:$FHPORT|$FH_KEY"
@@ -76,7 +82,7 @@ function execRemoteIdh()
     return 1
   fi
   if findHostByIdh $idh; then
-    ssh -t -t -o StrictHostKeyChecking=no -p $FHPORT $FHUSER@$FHHOST -i $FHKEYF "$cmd" 2>/dev/null
+    ssh -t -t -o StrictHostKeyChecking=no -p $FHPORT $FHUSER@$FHHOST -i $FHKEYF "$cmd" 2>/dev/null </dev/null
     return $?
   else
     return 0
@@ -293,7 +299,14 @@ else
                   exit 255
                 fi
                 ;;
-
+    test)	idh=$2
+                if ! isInt $idh;then
+                  echo "idh must be int"
+                  exit 1
+                fi
+		findHostByIdh $idh
+		echo "[$FHNAME] $FHUSER:$FHPASS@$FHHOST:$FHPORT|$FH_KEY"
+		;;
     *)          help
                 ;;
   esac
