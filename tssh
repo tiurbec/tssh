@@ -211,7 +211,7 @@ function nmapHost ()
   REMOTE_PORT=$PSQL_LOCAL_PORT
   LOCAL_PORT=$(randomPort)
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
-  PORT_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| tr '\n' ','|sed s/,$//)
+  PORT_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| sort -g | tr '\n' ','|sed s/,$//)
   PORT_RES="80,443,$PORT_RES"
   echo "===> $PORT_RES"
   if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
