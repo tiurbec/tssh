@@ -13,6 +13,8 @@ function showHelp ()
                      params: <hostname>
        <nmap>    - nmaps host on ssh ports
                      params: <hostname>
+       <ping>    - pings host
+                     params: <hostname>
        <idh>	 - finds hosts in database looking for ID
 		     params: <hostid>
        <key>     - SSH keys workout
@@ -200,6 +202,31 @@ function sshConnect ()
     echo "$DESTINATION not found."
   fi
 }
+function pingHost ()
+{
+  DESTINATION=${1:-"localhost"}
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      ping $TSSH_IP
+    fi
+  fi
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      ping $TSSH_IP
+    fi
+  fi
+  if [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    echo "$DESTINATION not found."
+  fi
+}
+
 function nmapHost ()
 {
   GOTO=${1:-localhost}
@@ -396,6 +423,15 @@ else
 		then
 		  DESTINATION=$2
                   nmapHost $DESTINATION
+                else
+                  echo "Need another parameter to look for."
+                  exit 255
+                fi
+                ;;
+    ping)       if [ $# -gt 1 ];
+                then
+                  DESTINATION=$2
+                  pingHost $DESTINATION
                 else
                   echo "Need another parameter to look for."
                   exit 255
