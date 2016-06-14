@@ -58,10 +58,10 @@ function openShellLoop ()
   then
     echo "Connecting to $USER@$IP:$PORT [$TSSH_HOST] using $IFILE"
   fi
-  COUNTER=0
+  COUNTER=1
   until ssh -t -t -o "StrictHostKeyChecking no" -o "ConnectTimeout 2" $SSHPARAMS 2>/dev/null
   do
-    echo -n "$COUNTER "
+    printf "\rRetry count: $COUNTER"
     COUNTER=$(expr $COUNTER + 1)
   done
 }
