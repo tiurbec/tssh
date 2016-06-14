@@ -53,7 +53,7 @@ function findHostByIdh()
   if [ "$idh" -eq "0" ]; then
     return 1
   fi
-  local psql_result=$(psql -U $PSQL_USER -h $PSQL_HOST -p $PSQL_PORT $PSQL_DB -t -c "select idh,h_name,ssh_host,ssh_port,ssh_user,ssh_psw,ssh_key,h_ipint from hosts where idh='$idh';"|sed s/\ //g)
+  local psql_result=$(/usr/bin/psql -U $PSQL_USER -h $PSQL_HOST -p $PSQL_PORT $PSQL_DB -t -c "select idh,h_name,ssh_host,ssh_port,ssh_user,ssh_psw,ssh_key,h_ipint from hosts where idh='$idh';"|sed s/\ //g)
   if [ -z $psql_result ]; then
     return 1
   fi
