@@ -45,7 +45,9 @@ function openShell ()
   then
     echo "Connecting to $USER@$IP:$PORT [$TSSH_HOST] using $IFILE"
   fi
+  echo -n -e "\033k$TSSH_HOST\033\134"
   ssh -t -t -o "StrictHostKeyChecking no" $SSHPARAMS
+  echo -n -e "\033k`hostname -s`\033\134"
 }
 function openShellLoop ()
 {
@@ -59,11 +61,22 @@ function openShellLoop ()
     echo "Connecting to $USER@$IP:$PORT [$TSSH_HOST] using $IFILE"
   fi
   COUNTER=1
-  until ssh -t -t -o "StrictHostKeyChecking no" -o "ConnectTimeout 2" $SSHPARAMS 2>/dev/null
+  KEYPRESSED=''
+  echo -n -e "\033k$TSSH_HOST\033\134"
+  until ssh -t -t -o "StrictHostKeyChecking no" -o "ConnectTimeout 1" $SSHPARAMS 2>/dev/null
   do
-    printf "\rRetry count: $COUNTER"
+    if [ -t 0 ]; then stty -echo -icanon -icrnl time 0 min 0; fi
+    printf "\rRetry count: ${COUNTER}. Press 'q' to exit  "
     COUNTER=$(expr $COUNTER + 1)
+    KEYPRESSED="`cat -v`"
+    if [ "$KEYPRESSED" == "q" ]; then
+      if [ -t 0 ]; then stty sane; fi
+      break
+    fi
+    echo -n $KEYPRESSED
+    if [ -t 0 ]; then stty sane; fi
   done
+  echo -e "\033k`hostname -s`\033\134"
 }
 
 function searchTextFile ()
