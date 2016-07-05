@@ -197,7 +197,8 @@ function openTunnel ()
   IFILE=${4:-"/root/.ssh/id_rsa"}
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=${6:-"40960"}
-  ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP "sleep 10" </dev/null 2>/dev/null &
+#  ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP "sleep 10" </dev/null 2>/dev/null &
+  ssh -N -f -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP </dev/null 2>/dev/null
   usleep 150000
 }
 
