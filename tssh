@@ -3,8 +3,8 @@
 
 function showHelp ()
 {
-#  echo "  $0 - utility for easy remote ssh operations"
-#  echo " "
+  #  echo "  $0 - utility for easy remote ssh operations"
+  #  echo " "
   echo "usage: $0 <command> <params>
   Available commands:
        [connect] - connects via SSH to a host
@@ -25,17 +25,16 @@ function showHelp ()
                              - <getpriv> <keyid>      get private key from PSQL
                              - <putty> <keyid>        get putty key from PSQL
                              - <list> <hostname>      list auth keys on host
-+                             - <put> <host> <keyid>   add auth key on host
-+       <put>     - scp a file to remote host
-+                     params: <hostname> <local> <remote>
-+                     note: local and remote can be both files or folders
-+       <get>     - scp a file from remote host
-+                     params: <hostname> <local> <remote>
-+                     note: local and remote can be both files or folders
+ +                             - <put> <host> <keyid>   add auth key on host
+ +       <put>     - scp a file to remote host
+ +                     params: <hostname> <local> <remote>
+ +                     note: local and remote can be both files or folders
+ +       <get>     - scp a file from remote host
+ +                     params: <hostname> <local> <remote>
+ +                     note: local and remote can be both files or folders
        <help>    - show this help"
   exit 255
 }
-
 function openShell ()
 {
   IP=${1:-"127.0.0.1"}
@@ -80,14 +79,13 @@ function openShellLoop ()
   done
   echo -e "\033k`hostname -s`\033\134"
 }
-
 function searchTextFile ()
 {
   GOTO=${1:-localhost}
   GOTO=${GOTO,,}
   exec 3<$TEXTFILE
   while read id hostname hostip hostport hostuser hostkey newname <&3; do
-#    fullkey=`printf "/root/.ssh/id_rsa_%02d" "$hostkey"`
+ #    fullkey=`printf "/root/.ssh/id_rsa_%02d" "$hostkey"`
     fullkey="${KEYS_DIR}/${hostkey}"
     if [ "${hostname,,}" == "$GOTO" ] || [ "${newname,,}" == "$GOTO" ];
     then
@@ -102,21 +100,18 @@ function searchTextFile ()
   done
   exec 3>&-
 }
-
 function findTextFile ()
 {
   GOTO=${1:-localhost}
   GOTO=${GOTO,,}
   cat $TEXTFILE | grep -i "$GOTO"
 }
-
 function findTextFileIdh ()
 {
   GOTO=${1:-localhost}
   GOTO=${GOTO,,}
   cat $TEXTFILE | grep -i "^$GOTO"
 }
-
 function searchPSQL ()
 {
   GOTO=${6:-localhost}
@@ -139,7 +134,6 @@ function searchPSQL ()
     TSSH_KEY=$(echo "$PSQL_RES"|cut -d"|" -f6)
   fi
 }
-
 function findPSQL ()
 {
   GOTO=${6:-localhost}
@@ -153,7 +147,6 @@ function findPSQL ()
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
   psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username,ssh_psw as password,ssh_key as key, sup_user as user from hosts where (h_name ilike '%$GOTO%') or (ssh_host ilike '%$GOTO%') order by ip,port;"
 }
-
 function findPSQLidh ()
 {
   GOTO=${6:-localhost}
@@ -167,7 +160,6 @@ function findPSQLidh ()
   openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
   psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idh as id,h_name as hostname,ssh_host as ip,ssh_port as port,ssh_user as username from hosts where (idh='$GOTO');"
 }
-
 function extractPSQLkey ()
 {
   GOTO=${6:-localhost}
@@ -183,12 +175,10 @@ function extractPSQLkey ()
   psql -A -X -a -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$KEYINDEX';">$TEMP_DIR/$KEYINDEX
   chmod og-rwx $TEMP_DIR/$KEYINDEX
 }
-
 function randomPort ()
 {
    echo $[ 40960 + $[ RANDOM % 10240 ]]
 }
-
 function openTunnel ()
 {
   IP=${1:-"127.0.0.1"}
@@ -197,11 +187,10 @@ function openTunnel ()
   IFILE=${4:-"/root/.ssh/id_rsa"}
   REMOTE_PORT=${5:-"5432"}
   LOCAL_PORT=${6:-"40960"}
-#  ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP "sleep 10" </dev/null 2>/dev/null &
+  #ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP "sleep 10" </dev/null 2>/dev/null &
   ssh -N -f -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP </dev/null 2>/dev/null
   usleep 150000
 }
-
 function sshConnect ()
 {
   DESTINATION=${1:-"localhost"}
@@ -223,14 +212,14 @@ function sshConnect ()
       rm -f $TEMP_DIR/$TSSH_KEY
     fi
   fi
-#  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
-#  then
-#    searchTextFile $DESTINATION
-#    if [ $TSSH_HOSTFOUND -eq 1 ];
-#    then
-#      openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
-#    fi
-#  fi
+  #if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  #then
+  #  searchTextFile $DESTINATION
+  #  if [ $TSSH_HOSTFOUND -eq 1 ];
+  #  then
+  #    openShell $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY
+  #  fi
+  #fi
   if [ $TSSH_HOSTFOUND -eq 0 ];
   then
     echo "$DESTINATION not found."
@@ -262,7 +251,6 @@ function sshLoop ()
     echo "$DESTINATION not found."
   fi
 }
-
 function pingHost ()
 {
   DESTINATION=${1:-"localhost"}
@@ -287,7 +275,6 @@ function pingHost ()
     echo "$DESTINATION not found."
   fi
 }
-
 function whoisHost ()
 { 
   DESTINATION=${1:-"localhost"}
@@ -312,7 +299,6 @@ function whoisHost ()
     echo "$DESTINATION not found."
   fi
 }
-
 function nmapHost ()
 {
   GOTO=${1:-localhost}
@@ -348,7 +334,6 @@ function nmapHost ()
     echo "$DESTINATION not found."
   fi
 }
-
 function sshFind ()
 {
   DESTINATION=${1:-"localhost"}
@@ -361,7 +346,6 @@ function sshFind ()
     findTextFile $DESTINATION
   fi
 }
-
 function sshFindIdh ()
 {
   DESTINATION=${1:-"localhost"}
@@ -374,28 +358,24 @@ function sshFindIdh ()
     findTextFileIdh $DESTINATION
   fi
 }
-
 function keysList ()
 {
   LOCAL_PORT=$(randomPort)
   openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
   psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idsk as id,sk_name as keyname from sshkeys order by keyname;"
 }
-
 function keysGetPub ()
 {
   LOCAL_PORT=$(randomPort)
   openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
   psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pub_txt from sshkeys where idsk='$1';"
 }
-
 function keysGetPriv ()
 {
   LOCAL_PORT=$(randomPort)
   openTunnel $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $LOCAL_PORT
   psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select pk_txt from sshkeys where idsk='$1';"
 }
-
 function keysGetPutty ()
 {
   PRIV_TEMP=$(mktemp /tmp/tssh.XXXXXX)
@@ -407,7 +387,6 @@ function keysGetPutty ()
   cat $PUTTY_TEMP
   rm -f $PRIV_TEMP $PUTTY_TEMP
 }
-
 function keysGetFull ()
 {
   PRIV_TEMP=$(mktemp /tmp/tssh.XXXXXX)
@@ -425,7 +404,6 @@ function keysGetFull ()
   echo "############################################################################################"
   rm -f $PRIV_TEMP $PUTTY_TEMP
 }
-
 function keysFind ()
 {
   LOCAL_PORT=$(randomPort)
@@ -437,7 +415,6 @@ function keysFind ()
     psql -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -c "select idsk as id,sk_name as keyname from sshkeys where sk_name ilike '%$1%' order by keyname;"
   fi
 }
-
 function keysListAuth ()
 {
   DESTINATION=${1:-"localhost"}
@@ -608,7 +585,8 @@ else
     help)	showHelp
 		;;
     *)		DESTINATION=$1
-		sshConnect $DESTINATION
+#		sshConnect $DESTINATION
+		sshLoop $DESTINATION
 		if [ $TSSH_HOSTFOUND -eq 0 ];
 		then
 		  showHelp
