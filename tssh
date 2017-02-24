@@ -11,6 +11,8 @@ function showHelp ()
                      params: <hostname>
        <find>    - finds hosts in database (substr search)
                      params: <hostname>
+       <exec>    - exec command remote
+                     params: <hostname> <command>
        <nmap>    - nmaps host on ssh ports
                      params: <hostname>
        <ping>    - pings host
@@ -26,12 +28,12 @@ function showHelp ()
                              - <putty> <keyid>        get putty key from PSQL
                              - <list> <hostname>      list auth keys on host
  +                             - <put> <host> <keyid>   add auth key on host
- +       <put>     - scp a file to remote host
- +                     params: <hostname> <local> <remote>
- +                     note: local and remote can be both files or folders
- +       <get>     - scp a file from remote host
- +                     params: <hostname> <local> <remote>
- +                     note: local and remote can be both files or folders
+        <put>     - scp a file to remote host
+                      params: <hostname> <local> <remote>
+                      note: local and remote can be both files or folders
+        <get>     - scp a file from remote host
+                      params: <hostname> <remote> <local>
+                      note: local and remote can be both files or folders
        <help>    - show this help"
   exit 255
 }
@@ -49,6 +51,23 @@ function openShell ()
   echo -n -e "\033k$TSSH_HOST\033\134"
   ssh -t -t -o "StrictHostKeyChecking no" $SSHPARAMS
   echo -n -e "\033k`hostname -s`\033\134"
+}
+function openShellExec()
+{
+  IP=${1:-"127.0.0.1"}
+  PORT=${2:-"22"}
+  USER=${3:-"root"}
+  IFILE=${4:-"/root/.ssh/id_rsa"}
+  SSHPARAMS=" -p $PORT $USER@$IP -i $IFILE "
+  REMOTECOMMAND=${5:-"ls"}
+#  if [ $SHOW_CONNECT_INFO -eq 1 ];
+#  then
+#    echo "Executing $REMOTECOMMAND on $USER@$IP:$PORT [$TSSH_HOST] using $IFILE"
+#  fi
+#  echo -n -e "\033k$TSSH_HOST\033\134"
+  ssh -t -t -o "StrictHostKeyChecking no" -o "ConnectTimeout 5" $SSHPARAMS "$REMOTECOMMAND" </dev/null
+#  echo -n -e "\033k`hostname -s`\033\134"
+
 }
 function openShellLoop ()
 {
@@ -189,7 +208,7 @@ function openTunnel ()
   LOCAL_PORT=${6:-"40960"}
   #ssh -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP "sleep 10" </dev/null 2>/dev/null &
   ssh -N -f -T -t -t -o "StrictHostKeyChecking no" -p $PORT -i $IFILE -L $LOCAL_PORT:localhost:$REMOTE_PORT $USER@$IP </dev/null 2>/dev/null
-  usleep 150000
+#  usleep 150000
 }
 function sshConnect ()
 {
@@ -225,6 +244,34 @@ function sshConnect ()
     echo "$DESTINATION not found."
   fi
 }
+function sshExec ()
+{
+  DESTINATION=${1:-"localhost"}
+  REMOTECOMMAND=${2:-"ls"}
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      openShellExec $TSSH_IP $TSSH_PORT $TSSH_USER $KEYS_DIR/$TSSH_KEY "$REMOTECOMMAND"
+    fi
+  fi
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      openShellExec $TSSH_IP $TSSH_PORT $TSSH_USER $TEMP_DIR/$TSSH_KEY "$REMOTECOMMAND"
+      rm -f $TEMP_DIR/$TSSH_KEY
+    fi
+  fi
+  if [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    echo "$DESTINATION not found."
+  fi
+}
+
 function sshLoop ()
 {
   DESTINATION=${1:-"localhost"}
@@ -334,6 +381,85 @@ function nmapHost ()
     echo "$DESTINATION not found."
   fi
 }
+function scpPut ()
+{
+  GOTO=${1:-localhost}
+  DESTINATION=${GOTO,,}
+  LOCALPATH=${2:-"/tmp/a"}
+  REMOTEPATH=${3:-""}
+  IP=$PSQL_SSH_HOST
+  PORT=$PSQL_SSH_PORT
+  USER=$PSQL_SSH_USER
+  IFILE=$PSQL_SSH_KEY
+  REMOTE_PORT=$PSQL_LOCAL_PORT
+  LOCAL_PORT=$(randomPort)
+#  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+#  PORT_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| sort -g | tr '\n' ','|sed s/,$//)
+#  PORT_RES="80,443,$PORT_RES"
+#  echo "===> $PORT_RES"
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      scp -r -i $TEMP_DIR/$TSSH_KEY -P $TSSH_PORT $LOCALPATH $TSSH_USER@$TSSH_IP:$REMOTEPATH
+    fi
+  fi
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      scp  -o "StrictHostKeyChecking no" -r -i $TEMP_DIR/$TSSH_KEY -P $TSSH_PORT $LOCALPATH $TSSH_USER@$TSSH_IP:$REMOTEPATH
+    fi
+  fi
+  if [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    echo "$DESTINATION not found."
+  fi
+}
+function scpGet ()
+{
+  GOTO=${1:-localhost}
+  DESTINATION=${GOTO,,}
+  LOCALPATH=${3:-""}
+  REMOTEPATH=${2:-"/tmp/a"}
+  IP=$PSQL_SSH_HOST
+  PORT=$PSQL_SSH_PORT
+  USER=$PSQL_SSH_USER
+  IFILE=$PSQL_SSH_KEY
+  REMOTE_PORT=$PSQL_LOCAL_PORT
+  LOCAL_PORT=$(randomPort)
+#  openTunnel $IP $PORT $USER $IFILE $REMOTE_PORT $LOCAL_PORT
+#  PORT_RES=$(psql -A -X -U postgres -h localhost -p $LOCAL_PORT infrastructure -t -c "select distinct ssh_port from hosts order by ssh_port asc;"| sort -g | tr '\n' ','|sed s/,$//)
+#  PORT_RES="80,443,$PORT_RES"
+#  echo "===> $PORT_RES"
+  if [ $TEXTFILE_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchTextFile $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      scp -o "StrictHostKeyChecking no" -r -i $TEMP_DIR/$TSSH_KEY -P $TSSH_PORT $TSSH_USER@$TSSH_IP:$REMOTEPATH $LOCALPATH
+    fi
+  fi
+  if [ $PGSQL_ENABLED -eq 1 ] && [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    searchPSQL $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $DESTINATION
+    if [ $TSSH_HOSTFOUND -eq 1 ];
+    then
+      extractPSQLkey $PSQL_SSH_HOST $PSQL_SSH_PORT $PSQL_SSH_USER $PSQL_SSH_KEY $PSQL_LOCAL_PORT $TSSH_KEY
+      scp -o "StrictHostKeyChecking no" -r -i $TEMP_DIR/$TSSH_KEY -P $TSSH_PORT $TSSH_USER@$TSSH_IP:$REMOTEPATH $LOCALPATH
+    fi
+  fi
+  if [ $TSSH_HOSTFOUND -eq 0 ];
+  then
+    echo "$DESTINATION not found."
+  fi
+}
+
 function sshFind ()
 {
   DESTINATION=${1:-"localhost"}
@@ -527,6 +653,34 @@ else
 		  exit 255
 		fi
 		;;
+    exec)       if [ $# -gt 1 ];
+                then
+                  DESTINATION=$2
+                  REMOTECOMMAND=$3
+                  sshExec $DESTINATION "$REMOTECOMMAND"
+                else
+                  echo "Need two params."
+                  exit 255
+                fi
+                ;;
+    put)        if [ $# -gt 1 ];
+                then
+                  DESTINATION=$2
+                  scpPut $2 $3 $4
+                else
+                  echo "Need three params."
+                  exit 255
+                fi
+                ;;
+    get)        if [ $# -gt 1 ];
+                then
+                  DESTINATION=$2
+                  scpGet $2 $3 $4
+                else
+                  echo "Need three params."
+                  exit 255
+                fi
+                ;;
     idh)        if [ $# -gt 1 ];
                 then
                   DESTINATION=$2
